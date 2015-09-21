@@ -1,0 +1,13 @@
+<form class="form-horizontal">
+    <div class="control-group">
+        {% for plugin_identifer, plugin_settings in plugin_automation_scripts_settings.items() %}
+            <h2> {{ plugin_automation_scripts_titles[plugin_identifer] }} </h2>
+            {% for setting in plugin_settings %}
+                <label class="control-label">{{ setting }}</label>
+                <div class="controls">
+                    <input type="number", step="any", class="input-block-level" data-bind="value: settings.plugins.automation_scripts.{{ plugin_identifer }}.{{ setting }}">
+                </div>
+            {% endfor %}
+        {% endfor %}
+    </div>
+</form>

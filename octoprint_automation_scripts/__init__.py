@@ -1,0 +1,317 @@
+# coding=utf-8
+import serial
+import os
+from threading import Thread, Event, Lock
+import imp
+
+from mecode import G
+from mecode.printer import Printer
+import octoprint.plugin
+import flask
+
+
+__author__ = "Jack Minardi <jack@voxel8.co>"
+__copyright__ = "Copyright (C) 2015 Voxel8, Inc."
+
+
+__plugin_name__ = "Automation Scripts"
+__plugin_version__ = "0.2.0"
+__plugin_author__ = "Jack Minardi"
+__plugin_description__ = "Easily run a mecode script from OctoPrint"
+
+
+class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
+                          octoprint.plugin.SettingsPlugin,
+                          octoprint.plugin.TemplatePlugin,
+                          octoprint.plugin.AssetPlugin,
+                          octoprint.plugin.SimpleApiPlugin,
+                          ):
+
+    def __init__(self):
+        self.running = False
+        self.event = Event()
+        self.event.set()
+        self._write_buffer = []
+        self._fake_ok = False
+        self._temp_resp_len = 0
+        self.g = None
+        self.read_lock = Lock()
+        self.write_lock = Lock()
+
+        self.scripts = {}
+        self.script_titles = {}
+        self.script_settings = {}
+        scriptdir = os.path.expanduser('~/.mecodescripts')
+        for filename in [f for f in os.listdir(scriptdir) if f.endswith('.py')]:
+            path = os.path.join(scriptdir, filename)
+            script = imp.load_source('mecodescript', path)
+            self.scripts[script.__script_id__] = script.__script_obj__
+            self.script_titles[script.__script_id__] = script.__script_title__
+            self.script_settings[script.__script_id__] = script.__script_settings__
+
+    ## MecodePlugin Interface  ##########################################
+
+    def start(self, scriptname):
+        if self.running:
+            self._logger.warn("Can't start mecode script while previous one is running")
+            return
+
+        # This is an assertion about our expected internal state.
+        if self.g is not None:
+            raise RuntimeError("I was trying to start the script and expected self.g to be None, but it isn't")
+
+        with self.read_lock:
+            with self.write_lock:
+                self.event.clear()
+                self.running = True
+                self.g = g = G(
+                    print_lines=False,
+                    aerotech_include=False,
+                    direct_write=True,
+                    direct_write_mode='serial',
+                    layer_height = 0.19,
+                    extrusion_width = 0.4,
+                    filament_diameter = 1.75,
+                    extrusion_multiplier = 1.00,
+                    setup=False,
+                )
+                # We need a Printer instance for readline to work.
+                g._p = Printer()
+                self._mecode_thread = Thread(target=self.mecode_entrypoint,
+                                             args=(scriptname,),
+                                             name='mecode')
+                self._mecode_thread.start()
+
+    def mecode_entrypoint(self, scriptname):
+        """
+        Entrypoint for the mecode thread.  All exceptions are caught and logged.
+        """
+        try:
+            self.execute_script(scriptname)
+        except Exception as e:
+            self._logger.exception('Error while running mecode: ' + str(e))
+
+    def execute_script(self, scriptname):
+        self._logger.info('Mecode script started')
+        self.g._p.connect(self.s)
+        self.g._p.start()
+
+        try:
+            settings = self.script_settings[scriptname]
+            scriptobj = self.scripts[scriptname](self.g, self._logger, settings)
+            success, values = scriptobj.run()
+            if success:
+                for key, val in values.iteritems():
+                    self._settings.set([key], str(val))
+            else:
+                self._logger.exception('Script failed, not saving values.')
+
+        except Exception as e:
+            self._logger.exception('Script was forcibly exited: ' + str(e))
+            self.relinquish_control(wait=False)
+            return
+
+        self.relinquish_control()
+
+    def relinquish_control(self, wait=True):
+        if self.g is None:
+            return
+        self._logger.info('Resetting Line Number to 0')
+        self.g._p.reset_linenumber()
+        with self.read_lock:
+            self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
+            self.g.teardown(wait=wait)
+            self.g = None
+            self.running = False
+            self._fake_ok = True
+            self._temp_resp_len = 0
+            self.event.set()
+            self._logger.info('teardown finished, returning control to host')
+
+    ## serial.Serial Interface  ################################################
+
+    def readline(self, *args, **kwargs):
+        if self.running:
+            self.event.wait(2)
+        with self.read_lock:
+            if self._fake_ok:
+                # Just finished running, and need to send fake ok.
+                self._fake_ok = False
+                resp = 'ok\n'
+            elif not self.running:
+                resp = self.s.readline(*args, **kwargs)
+            else:
+                # We are running.
+                if len(self.g._p.temp_readings) > self._temp_resp_len:
+                    # We have a new temp reading.  Respond with that.
+                    self._temp_resp_len = len(self.g._p.temp_readings)
+                    resp = self.g._p.temp_readings[-1]
+                else:
+                    resp = self.aa.response_string or 'Alignment script is running'
+            return resp
+
+    def write(self, data):
+        with self.write_lock:
+            if not self.running:
+                return self.s.write(data)
+            else:
+                self._logger.warn('Write called when Mecode has control, ignoring: ' + str(data))
+
+    def close(self):
+        with self.write_lock:
+            if self.g is not None:
+                self.g.teardown(wait=False)
+                self.g = None
+            self.running = False
+            self._fake_ok = False
+            self._temp_resp_len = 0
+            self.event.set()
+        return self.s.close()
+
+    ## Plugin Hooks  ###########################################################
+
+    #def print_started_sentinel(self, comm, phase, cmd, cmd_type, gcode, *args, **kwargs):
+    #    if 'M900' in cmd:
+    #        self.start()
+    #        return None
+    #    return cmd
+
+    def serial_factory(self, comm_instance, port, baudrate, connection_timeout):
+        if port == 'VIRTUAL':
+            return None
+        # The following is based on:
+        # https://github.com/foosel/OctoPrint/blob/1.2.4/src/octoprint/util/comm.py#L1242
+        if port is None or port == 'AUTO':
+            # no known port, try auto detection
+            comm_instance._changeState(comm_instance.STATE_DETECT_SERIAL)
+            serial_obj = comm_instance._detectPort(True)
+            if serial_obj is None:
+                comm_instance._errorValue = 'Failed to autodetect serial port, please set it manually.'
+                comm_instance._changeState(comm_instance.STATE_ERROR)
+                comm_instance._log("Failed to autodetect serial port, please set it manually.")
+                return None
+
+            port = serial_obj.port
+
+        # connect to regular serial port
+        comm_instance._log("Connecting to: %s" % port)
+        if baudrate == 0:
+            # We can't call OctoPrint's private baudrateList() function, so
+            # we've implemented our own.
+            baudrates = self.baudrateList()
+            # We changed the default to 250000 since that's what we usually use.
+            serial_obj = serial.Serial(str(port), 250000 if 250000 in baudrates else baudrates[0], timeout=connection_timeout, writeTimeout=10000, parity=serial.PARITY_ODD)
+        else:
+            serial_obj = serial.Serial(str(port), baudrate, timeout=connection_timeout, writeTimeout=10000, parity=serial.PARITY_ODD)
+        serial_obj.close()
+        serial_obj.parity = serial.PARITY_NONE
+        serial_obj.open()
+
+        self.s = serial_obj
+        return self
+
+    def get_update_information(self, *args, **kwargs):
+        return dict(
+            automation_script_plugin=dict(
+                type="github_commit",
+                user="Voxel8",
+                repo="Octoprint-Automation-Scripts",
+                branch="master",
+                pip="https://github.com/Voxel8/OctoPrint-Automation-Scripts/archive/{target_version}.zip",
+            )
+        )
+
+    def baudrateList(self):
+        """
+        Returns a list of baudrates to use when auto detecting.
+        """
+        # TODO: OctoPrint reads from the config to adjust this list.  Should we
+        # do that also?
+        ret = [250000, 230400, 115200, 57600, 38400, 19200, 9600]
+        # Ensure this is always sorted.
+        ret.sort(reverse=True)
+        return ret
+
+    ### EventHandlerPlugin API  ################################################
+
+    def on_event(self, event, payload):
+        if event == 'Disconnecting' and self.running:
+            # OctoPrint is trying to disconnect.  Interrupt automation.
+            # Otherwise, we won't get the close call until after automation
+            # finishes.
+            self.relinquish_control(wait=False)
+        if event == 'PrintCancelled':
+            self.relinquish_control()
+        if event == 'PrintPaused':
+            if self.g is not None:
+                self.g._p.paused = True
+        if event == 'PrintResumed':
+            if self.g is not None:
+                self.g._p.paused = False
+        if event == 'Connected':
+            self.send_script_commands()
+
+    def send_script_commands(self):
+        for name, scriptobj in self.scripts.iteritems():
+            if hasattr(scriptobj, 'get_settings_gcode'):
+                self._printer.commands(scriptobj.__script_commands__(self._settings.get[name]))
+
+    ### SettingsPlugin API  ####################################################
+
+    def get_settings_defaults(self):
+        #settings = {}
+        #for scriptname, scriptobj in self.scripts.iteritems():
+        #    settings[scriptname] = scriptobj.__script_settings__
+        return self.script_settings
+
+    def on_settings_save(self, data):
+        octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
+        self.send_script_commands()
+
+    ### TemplatePlugin API  ####################################################
+
+    def get_template_configs(self):
+        return [
+            dict(type="tab", template="automation_scripts_tab.jinja2", custom_bindings=False),
+        ]
+
+    def get_template_vars(self):
+        settings = {}
+        for script_id in self.scripts:
+            settings[script_id] = self.script_settings[script_id].keys()
+        return dict(settings=settings, titles=self.script_titles)
+
+    ### AssetPlugin API  #######################################################
+
+    def get_assets(self):
+         return {
+             "js": ["js/automation_scripts.js"],
+         }
+
+    ### SimpleApiPlugin API ####################################################
+
+    def get_api_commands(self):
+        return dict(
+            [(script_id, []) for script_id in self.scripts]
+        )
+
+    def on_api_command(self, command, data):
+        if command in self.scripts:
+            self.start(command)
+
+    def on_api_get(self, request):
+        return flask.jsonify(script_titles=self.script_titles)
+
+
+def __plugin_load__():
+    global __plugin_hooks__
+    global __plugin_implementation__
+
+    plugin = MecodePlugin()
+
+    __plugin_implementation__ = plugin
+    __plugin_hooks__ = {
+        "octoprint.comm.transport.serial.factory": plugin.serial_factory,
+        #"octoprint.comm.protocol.gcode.queuing": plugin.print_started_sentinel,
+        "octoprint.plugin.softwareupdate.check_config": plugin.get_update_information,
+    }
