@@ -212,7 +212,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def get_update_information(self, *args, **kwargs):
         return dict(
-            automation_script_plugin=dict(
+            automation_scripts_plugin=dict(
                 type="github_commit",
                 user="Voxel8",
                 repo="Octoprint-Automation-Scripts",
