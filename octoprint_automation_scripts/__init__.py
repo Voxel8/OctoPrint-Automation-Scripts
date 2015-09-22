@@ -272,7 +272,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def get_template_configs(self):
         return [
-            dict(type="tab", template="automation_scripts_tab.jinja2", custom_bindings=False),
+            dict(type="settings", template="automation_scripts_settings.jinja2", custom_bindings=False),
         ]
 
     def get_template_vars(self):
