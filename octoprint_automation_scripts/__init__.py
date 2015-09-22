@@ -236,7 +236,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     ### EventHandlerPlugin API  ################################################
 
-    def on_event(self, event, payload):
+    def on_event(self, event, payload, *args, **kwargs):
         if event == 'Disconnecting' and self.running:
             # OctoPrint is trying to disconnect.  Interrupt automation.
             # Otherwise, we won't get the close call until after automation
