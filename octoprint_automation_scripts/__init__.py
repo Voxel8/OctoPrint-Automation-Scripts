@@ -42,6 +42,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.scripts = {}
         self.script_titles = {}
         self.script_settings = {}
+        self.script_commands = {}
         scriptdir = os.path.expanduser('~/.mecodescripts')
         for filename in [f for f in os.listdir(scriptdir) if f.endswith('.py')]:
             path = os.path.join(scriptdir, filename)
@@ -49,6 +50,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.scripts[script.__script_id__] = script.__script_obj__
             self.script_titles[script.__script_id__] = script.__script_title__
             self.script_settings[script.__script_id__] = script.__script_settings__
+            self.script_commands[script.__script_id__] = script.__script_commands__
 
     ## MecodePlugin Interface  ##########################################
 
@@ -254,9 +256,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.send_script_commands()
 
     def send_script_commands(self):
-        for name, scriptobj in self.scripts.iteritems():
-            if hasattr(scriptobj, 'get_settings_gcode'):
-                self._printer.commands(scriptobj.__script_commands__(self._settings.get[name]))
+        for name, script_commands in self.script_commands.iteritems():
+            cmd = script_commands(self._settings.get([name]))
+            self._printer.commands(cmd)
 
     ### SettingsPlugin API  ####################################################
 
