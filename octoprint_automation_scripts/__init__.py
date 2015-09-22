@@ -261,9 +261,6 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
     ### SettingsPlugin API  ####################################################
 
     def get_settings_defaults(self):
-        #settings = {}
-        #for scriptname, scriptobj in self.scripts.iteritems():
-        #    settings[scriptname] = scriptobj.__script_settings__
         return self.script_settings
 
     def on_settings_save(self, data):
