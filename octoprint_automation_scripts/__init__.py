@@ -37,6 +37,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.g = None
         self.read_lock = Lock()
         self.write_lock = Lock()
+        self.so = None
 
         self.scripts = {}
         self.script_titles = {}
@@ -98,8 +99,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
         try:
             settings = self.script_settings[scriptname]
-            scriptobj = self.scripts[scriptname](self.g, self._logger, settings)
+            self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, settings)
             success, values = scriptobj.run()
+            self.so = None
             if success:
                 for key, val in values.iteritems():
                     self._settings.set([key], str(val))
@@ -147,7 +149,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                     self._temp_resp_len = len(self.g._p.temp_readings)
                     resp = self.g._p.temp_readings[-1]
                 else:
-                    resp = self.aa.response_string or 'Alignment script is running'
+                    resp = self.so.response_string or 'Alignment script is running'
             return resp
 
     def write(self, data):
