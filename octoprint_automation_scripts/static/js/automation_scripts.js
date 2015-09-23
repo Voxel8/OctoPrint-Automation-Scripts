@@ -9,8 +9,6 @@ $(function() {
         };
 
         self.getAdditionalControls = function() {
-            console.log("titles:");
-            console.log(self.scriptTitles);
             var buttons = [];
             for (var scriptName in self.scriptTitles) {
                 var scriptTitle = self.scriptTitles[scriptName];
