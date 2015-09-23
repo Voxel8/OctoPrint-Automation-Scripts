@@ -20,6 +20,9 @@ __plugin_author__ = "Jack Minardi"
 __plugin_description__ = "Easily run a mecode script from OctoPrint"
 
 
+SCRIPT_DIR = os.path.expanduser('~/.mecodescripts')
+
+
 class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                           octoprint.plugin.SettingsPlugin,
                           octoprint.plugin.TemplatePlugin,
@@ -28,6 +31,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                           ):
 
     def __init__(self):
+        if not os.path.exists(SCRIPT_DIR):
+            self._logger.warn('Script directory does not exist')
+            return
+
         self.running = False
         self.event = Event()
         self.event.set()
@@ -43,7 +50,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.script_titles = {}
         self.script_settings = {}
         self.script_commands = {}
-        scriptdir = os.path.expanduser('~/.mecodescripts')
+        scriptdir = SCRIPT_DIR
         for filename in [f for f in os.listdir(scriptdir) if f.endswith('.py')]:
             path = os.path.join(scriptdir, filename)
             script = imp.load_source('mecodescript', path)
