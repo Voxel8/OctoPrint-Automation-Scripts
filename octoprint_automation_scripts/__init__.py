@@ -270,7 +270,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
     ### SettingsPlugin API  ####################################################
 
     def get_settings_defaults(self):
-        return self.script_settings
+        # Settings are typically returned as OrderedDicts from the loaded
+        # scripts so the script author can specify the order they appear in the
+        # settings menu. Unfortunately pyyaml does not know how to serialize
+        # OrderedDicts to we convert them to normal dicts here.
+        return {id: dict(s) for id, s in self.script_settings.iteritems()}
 
     def on_settings_save(self, data):
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
