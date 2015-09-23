@@ -56,8 +56,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             script = imp.load_source('mecodescript', path)
             self.scripts[script.__script_id__] = script.__script_obj__
             self.script_titles[script.__script_id__] = script.__script_title__
-            self.script_settings[script.__script_id__] = script.__script_settings__
-            self.script_commands[script.__script_id__] = script.__script_commands__
+            self.script_settings[script.__script_id__] = script.__script_settings__ if hasattr(script, '__script_settings__') else {}
+            self.script_commands[script.__script_id__] = script.__script_commands__ if hasattr(script, '__script_commands__') else lambda s: ""
 
     ## MecodePlugin Interface  ##########################################
 
