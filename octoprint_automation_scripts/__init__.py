@@ -112,8 +112,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             success, values = scriptobj.run()
             self.so = None
             if success:
+                self._logger.info("Script was successful, saving: " + str(values))
                 for key, val in values.iteritems():
                     self._settings.set([key], str(val))
+                    self.logger.info(str(key) + " -> " + str(self._settings.get([key])))
             else:
                 self._logger.exception('Script failed, not saving values.')
 
