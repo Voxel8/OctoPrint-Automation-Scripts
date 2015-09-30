@@ -113,7 +113,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.so = None
             if success:
                 for key, val in values.iteritems():
-                    self._settings.set([key], str(val))
+                    self._settings.set([scriptname, key], str(val))
             else:
                 self._logger.exception('Script failed, not saving values.')
 
