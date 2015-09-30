@@ -158,7 +158,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                     self._temp_resp_len = len(self.g._p.temp_readings)
                     resp = self.g._p.temp_readings[-1]
                 else:
-                    resp = self.so.response_string or 'Alignment script is running'
+                    if self.so is None or not self.so.response_string:
+                        resp = 'Alignment script is running'
+                    else:
+                        resp = self.so.response_string
             return resp
 
     def write(self, data):
