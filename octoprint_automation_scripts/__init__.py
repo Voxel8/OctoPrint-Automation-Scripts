@@ -107,7 +107,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.g._p.start()
 
         try:
-            settings = self.script_settings[scriptname]
+            settings = self._settings.get([scriptname])
             self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, settings)
             success, values = scriptobj.run()
             self.so = None
