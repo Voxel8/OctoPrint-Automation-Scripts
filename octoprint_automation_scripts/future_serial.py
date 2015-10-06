@@ -1,4 +1,5 @@
 from concurrent.futures import Future, as_completed
+from Queue import Queue
 from threading import Condition, Thread, Event, Lock
 
 class QueueMessage:
@@ -9,27 +10,6 @@ class QueueMessage:
         self.args = args
         self.kwargs = kwargs
 
-
-class AtomicQueue:
-
-    def __init__(self):
-        self.queue = []
-        self.condition = Condition()
-
-    def append(payload):
-        with self.condition:
-            self.queue.append(payload)
-            self.condition.notify()
-
-    def popleft(self):
-        with self.condition:
-            # If the queue is empty, yield to the OS until we have payload.
-            while not self.queue:
-                self.condition.wait()
-
-            payload = self.queue.popleft()
-
-            return payload
 
 class FutureSerial:
     """
@@ -43,8 +23,8 @@ class FutureSerial:
 
         # Since a serial port can be read from and written to simultaneously, we
         # have two separate queues.
-        self.read_queue = AtomicQueue()
-        self.write_queue = AtomicQueue()
+        self.read_queue = Queue()
+        self.write_queue = Queue()
 
         # These flags are a way to terminate the worker threads.  Set them to
         # True from another thread to make the work loop exit.
@@ -73,7 +53,7 @@ class FutureSerial:
         """
         future = Future()
         message = QueueMessage(future, 'readline', args, kwargs)
-        self.read_queue.append(message)
+        self.read_queue.put(message)
         return future
 
     def future_write(self, data):
@@ -85,7 +65,7 @@ class FutureSerial:
         """
         future = Future()
         message = QueueMessage(future, 'write', [data])
-        self.write_queue.append(message)
+        self.write_queue.put(message)
         return future
 
     def future_close(self):
@@ -97,7 +77,7 @@ class FutureSerial:
         """
         future = Future()
         message = QueueMessage(future, 'close', [])
-        self.write_queue.append(message)
+        self.write_queue.put(message)
         return future
 
     def work_off_reads(self):
@@ -116,13 +96,14 @@ class FutureSerial:
         """
         self._work_off(self.write_queue, 'done_writing')
 
-    def _work_off(self, atomic_queue, done_flag):
+    def _work_off(self, queue, done_flag):
         # Wait until we actually have a serial object set.
         self.has_serial_event.wait()
 
         while not getattr(self, done_flag):
-            # Pop work off the queue in FIFO order.
-            message = atomic_queue.popleft()
+            # Pop work off the queue in FIFO order.  Block until we get
+            # something.
+            message = queue.get()
 
             # Execute the message.
             self._run(message)
