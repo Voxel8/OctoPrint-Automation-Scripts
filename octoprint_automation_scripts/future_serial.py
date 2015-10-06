@@ -1,5 +1,5 @@
 from concurrent.futures import Future, as_completed
-from threading import Thread, Event, Lock
+from threading import Condition, Thread, Event, Lock
 
 class QueueMessage:
 
@@ -14,26 +14,20 @@ class AtomicQueue:
 
     def __init__(self):
         self.queue = []
-        self.queue_lock = Lock()
-        self.has_payload_event = Event()
+        self.condition = Condition()
 
     def append(payload):
-        with self.queue_lock:
+        with self.condition:
             self.queue.append(payload)
-            self.has_payload_event.set()
+            self.condition.notify()
 
     def popleft(self):
-        # If the queue is empty, yield to the OS until we have payload.
-        if not self.queue:
-            self.has_payload_event.wait()
+        with self.condition:
+            # If the queue is empty, yield to the OS until we have payload.
+            while not self.queue:
+                self.condition.wait()
 
-        with self.queue_lock:
             payload = self.queue.popleft()
-            # If we've popped off the last payload, clear the event so we can
-            # get signaled in the future.  This must be done while holding
-            # the queue lock.
-            if not self.queue:
-                self.has_payload_event.clear()
 
             return payload
 
