@@ -35,6 +35,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self._logger.warn('Script directory does not exist')
             return
 
+        self.s = None
         self.running = False
         self.event = Event()
         self.event.set()
