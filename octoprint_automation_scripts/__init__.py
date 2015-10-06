@@ -9,6 +9,8 @@ from mecode.printer import Printer
 import octoprint.plugin
 import flask
 
+from .future_serial import FutureSerial
+
 
 __author__ = "Jack Minardi <jack@voxel8.co>"
 __copyright__ = "Copyright (C) 2015 Voxel8, Inc."
@@ -36,6 +38,13 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             return
 
         self.s = None
+        self.future_serial = FutureSerial()
+        self._read_thread = Thread(target=self.future_serial.work_off_reads,
+                                   name='reads')
+        self._read_thread.start()
+        self._write_thread = Thread(target=self.future_serial.work_off_writes,
+                                    name='writes')
+        self._write_thread.start()
         self.running = False
         self.event = Event()
         self.event.set()
@@ -143,9 +152,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.event.set()
             self._logger.info('teardown finished, returning control to host')
 
-    ## serial.Serial Interface  ################################################
-
-    def readline(self, *args, **kwargs):
+    def single_threaded_readline(self, *args, **kwargs):
         if self.running:
             self.event.wait(2)
         with self.read_lock:
@@ -168,14 +175,14 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                         resp = self.so.response_string
             return resp
 
-    def write(self, data):
+    def single_threaded_write(self, data):
         with self.write_lock:
             if not self.running:
                 return self.s.write(data)
             else:
                 self._logger.warn('Write called when Mecode has control, ignoring: ' + str(data))
 
-    def close(self):
+    def single_threaded_close(self):
         with self.write_lock:
             if self.g is not None:
                 self.g.teardown(wait=False)
@@ -185,6 +192,41 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self._temp_resp_len = 0
             self.event.set()
         return self.s.close()
+
+    ## serial.Serial Interface  ################################################
+
+    def readline(self, *args, **kwargs):
+        future = self.future_serial.future_readline(*args, **kwargs)
+        # Block until a result is set.
+        result = self._wait(future)
+        return result
+
+    def write(self, data):
+        future = self.future_serial.future_write(data)
+        # Block until a result is set.
+        result = self._wait(future)
+        return result
+
+    def close(self):
+        future = self.future_serial.future_close()
+        # Block until a result is set.
+        result = self._wait(future)
+        return result
+
+    def _wait(self, future):
+        """
+        Wait for a future to complete and return the result.  If it had an
+        exception, raise the exception.
+        """
+        for f in as_completed([future]):
+            if f.done() and not f.cancelled():
+                return f.result()
+            elif f.cancelled():
+                # We're never cancelling futures, so this should never happen.
+                raise RuntimeError("Future was unexpectedly cancelled")
+            else:
+                # There was an error in the worker.  Raise the exception here.
+                raise f.exception(0.1)
 
     ## Plugin Hooks  ###########################################################
 
@@ -226,6 +268,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         serial_obj.open()
 
         self.s = serial_obj
+        self.future_serial.serial = self
         return self
 
     def get_update_information(self, *args, **kwargs):
