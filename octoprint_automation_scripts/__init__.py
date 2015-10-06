@@ -197,36 +197,21 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def readline(self, *args, **kwargs):
         future = self.future_serial.future_readline(*args, **kwargs)
-        # Block until a result is set.
-        result = self._wait(future)
+        # Block until a result is set.  If there was an exception, raise it.
+        result = future.result()
         return result
 
     def write(self, data):
         future = self.future_serial.future_write(data)
-        # Block until a result is set.
-        result = self._wait(future)
+        # Block until a result is set.  If there was an exception, raise it.
+        result = future.result()
         return result
 
     def close(self):
         future = self.future_serial.future_close()
-        # Block until a result is set.
-        result = self._wait(future)
+        # Block until a result is set.  If there was an exception, raise it.
+        result = future.result()
         return result
-
-    def _wait(self, future):
-        """
-        Wait for a future to complete and return the result.  If it had an
-        exception, raise the exception.
-        """
-        for f in as_completed([future]):
-            if f.done() and not f.cancelled():
-                return f.result()
-            elif f.cancelled():
-                # We're never cancelling futures, so this should never happen.
-                raise RuntimeError("Future was unexpectedly cancelled")
-            else:
-                # There was an error in the worker.  Raise the exception here.
-                raise f.exception(0.1)
 
     ## Plugin Hooks  ###########################################################
 
