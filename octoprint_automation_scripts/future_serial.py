@@ -23,7 +23,8 @@ class FutureSerial:
         self._serial = None
 
         # Since a serial port can be read from and written to simultaneously, we
-        # have two separate queues.
+        # have two separate queues.  Queue implementations are assumed to be
+        # thread-safe.
         self.read_queue = Queue()
         self.write_queue = Queue()
 
@@ -81,6 +82,21 @@ class FutureSerial:
         self.write_queue.put(message)
         return future
 
+    def exit_work_threads(self, wait=False):
+        if not wait:
+            # This tells the work threads to stop looping immediately.  This
+            # must be done *before* adding the exit message to the queue.
+            self.done_reading = True
+            self.done_writing = True
+
+        # Add exit messages to all queues.  We must do this for all threads
+        # since the queues could be empty, and the threads would be blocked
+        # waiting.
+        read_message = QueueMessage(None, 'exit', [])
+        self.read_queue.put(read_message)
+        write_message = QueueMessage(None, 'exit', [])
+        self.write_queue.put(write_message)
+
     def work_off_reads(self):
         """
         Work off the read queue.
@@ -105,6 +121,10 @@ class FutureSerial:
             # Pop work off the queue in FIFO order.  Block until we get
             # something.
             message = queue.get()
+
+            # If we see an exit message, stop looping.
+            if message.message_type == 'exit':
+                break
 
             # Execute the message.
             self._run(message)

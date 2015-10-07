@@ -30,6 +30,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                           octoprint.plugin.TemplatePlugin,
                           octoprint.plugin.AssetPlugin,
                           octoprint.plugin.SimpleApiPlugin,
+                          octoprint.plugin.ShutdownPlugin,
                           ):
 
     def __init__(self):
@@ -39,12 +40,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
         self.s = None
         self.future_serial = FutureSerial()
-        self._read_thread = Thread(target=self.future_serial.work_off_reads,
-                                   name='reads')
-        self._read_thread.start()
-        self._write_thread = Thread(target=self.future_serial.work_off_writes,
-                                    name='writes')
-        self._write_thread.start()
+        self._read_thread = None
+        self._write_thread = None
         self.running = False
         self.event = Event()
         self.event.set()
@@ -68,6 +65,16 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.script_titles[script.__script_id__] = script.__script_title__
             self.script_settings[script.__script_id__] = script.__script_settings__ if hasattr(script, '__script_settings__') else {}
             self.script_commands[script.__script_id__] = script.__script_commands__ if hasattr(script, '__script_commands__') else lambda s: ""
+
+        self._start_work_threads()
+
+    def _start_work_threads(self):
+        self._read_thread = Thread(target=self.future_serial.work_off_reads,
+                                   name='reads')
+        self._read_thread.start()
+        self._write_thread = Thread(target=self.future_serial.work_off_writes,
+                                    name='writes')
+        self._write_thread.start()
 
     ## MecodePlugin Interface  ##########################################
 
@@ -348,6 +355,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def on_api_get(self, request):
         return flask.jsonify(script_titles=self.script_titles)
+
+    ### ShutdownPlugin API ####################################################
+
+    def on_shutdown(self):
+        self.future_serial.exit_work_threads(wait=True)
 
 
 def __plugin_load__():
