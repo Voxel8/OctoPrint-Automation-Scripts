@@ -1,5 +1,6 @@
 from concurrent.futures import Future, as_completed
 from Queue import Queue
+import sys
 from threading import Condition, Thread, Event, Lock
 
 class QueueMessage:
@@ -110,16 +111,28 @@ class FutureSerial:
 
     def _run(self, message):
         """
-        Actually execute a message
+        Actually execute a message and resolve its future.
         """
-        if message.message_type == 'readline':
-            return self._readline(*message.args, **message.kwargs)
-        elif message.message_type == 'write':
-            return self._write(*message.args)
-        elif message.message_type == 'close':
-            return self._close(*message.args)
+        future = message.future
+        # Put the future into the running state.
+        if not future.set_running_or_notify_cancel():
+            # The future was cancelled.
+            return
+
+        try:
+            if message.message_type == 'readline':
+                result = self._readline(*message.args, **message.kwargs)
+            elif message.message_type == 'write':
+                result = self._write(*message.args)
+            elif message.message_type == 'close':
+                result = self._close(*message.args)
+            else:
+                raise RuntimeError('Unknown message type: {}'.format(message.message_type))
+        except BaseException:
+            e, tb = sys.exc_info()[1:]
+            future.set_exception_info(e, tb)
         else:
-            raise RuntimeError('Unknown message type: {}'.format(message.message_type))
+            future.set_result(result)
 
     def _readline(self, *args, **kwargs):
         return self.serial.single_threaded_readline(*args, **kwargs)
