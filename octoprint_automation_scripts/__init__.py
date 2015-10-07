@@ -69,12 +69,21 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self._start_work_threads()
 
     def _start_work_threads(self):
+        if hasattr(self, '_logger'):
+            self._logger.debug('Starting work threads...')
         self._read_thread = Thread(target=self.future_serial.work_off_reads,
-                                   name='reads')
+                                   name='octoprint_automation_scripts_reads')
+        self._read_thread.daemon = True
         self._read_thread.start()
         self._write_thread = Thread(target=self.future_serial.work_off_writes,
-                                    name='writes')
+                                    name='octoprint_automation_scripts_writes')
+        self._write_thread.daemon = True
         self._write_thread.start()
+
+    def _stop_work_threads(self):
+        if hasattr(self, '_logger'):
+            self._logger.debug('Stopping work threads...')
+        self.future_serial.exit_work_threads(wait=True)
 
     ## MecodePlugin Interface  ##########################################
 
@@ -359,7 +368,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
     ### ShutdownPlugin API ####################################################
 
     def on_shutdown(self):
-        self.future_serial.exit_work_threads(wait=True)
+        """
+        Called upon the imminent shutdown of OctoPrint.
+        """
+        self._stop_work_threads()
 
 
 def __plugin_load__():
