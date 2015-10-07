@@ -3,7 +3,7 @@ import Queue as queue
 import sys
 import threading
 
-class QueueMessage:
+class QueueMessage(object):
 
     def __init__(self, future, message_type, args, kwargs = None):
         self.future = future
@@ -12,7 +12,7 @@ class QueueMessage:
         self.kwargs = kwargs
 
 
-class FutureSerial:
+class FutureSerial(object):
     """
     A proxy for a Serial object that returns Futures and executes `readline()`,
     `write()`, and `close()` in another thread instead of the calling thread.
