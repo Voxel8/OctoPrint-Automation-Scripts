@@ -1,7 +1,7 @@
-from concurrent.futures import Future, as_completed
-from Queue import Queue
+import concurrent.futures as futures
+import Queue as queue
 import sys
-from threading import Condition, Thread, Event, Lock
+import threading
 
 class QueueMessage:
 
@@ -19,14 +19,14 @@ class FutureSerial:
     """
 
     def __init__(self):
-        self.has_serial_event = Event()
+        self.has_serial_event = threading.Event()
         self._serial = None
 
         # Since a serial port can be read from and written to simultaneously, we
         # have two separate queues.  Queue implementations are assumed to be
         # thread-safe.
-        self.read_queue = Queue()
-        self.write_queue = Queue()
+        self.read_queue = queue.Queue()
+        self.write_queue = queue.Queue()
 
         # These flags are a way to terminate the worker threads.  Set them to
         # True from another thread to make the work loop exit.
@@ -53,7 +53,7 @@ class FutureSerial:
 
         This can safely be called from any number of threads.
         """
-        future = Future()
+        future = futures.Future()
         message = QueueMessage(future, 'readline', args, kwargs)
         self.read_queue.put(message)
         return future
@@ -65,7 +65,7 @@ class FutureSerial:
 
         This can safely be called from any number of threads.
         """
-        future = Future()
+        future = futures.Future()
         message = QueueMessage(future, 'write', [data])
         self.write_queue.put(message)
         return future
@@ -77,7 +77,7 @@ class FutureSerial:
 
         This can safely be called from any number of threads.
         """
-        future = Future()
+        future = futures.Future()
         message = QueueMessage(future, 'close', [])
         self.write_queue.put(message)
         return future
