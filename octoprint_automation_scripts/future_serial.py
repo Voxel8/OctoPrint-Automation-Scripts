@@ -41,7 +41,7 @@ class FutureSerial(object):
     def serial(self, serial):
         self._serial = serial
         # Signal to the worker thread that we have a serial object.
-        if self._serial:
+        if self._serial is not None:
             self.has_serial_event.set()
         else:
             self.has_serial_event.clear()
