@@ -117,13 +117,13 @@ class FutureSerial(object):
         # Wait until we actually have a serial object set.
         self.has_serial_event.wait()
 
-        while not getattr(self, done_flag):
+        while True:
             # Pop work off the queue in FIFO order.  Block until we get
             # something.
             message = queue.get()
 
-            # If we see an exit message, stop looping.
-            if message.message_type == 'exit':
+            # If the done flag was set or we see an exit message, stop looping.
+            if getattr(self, done_flag) or message.message_type == 'exit':
                 break
 
             # Execute the message.
