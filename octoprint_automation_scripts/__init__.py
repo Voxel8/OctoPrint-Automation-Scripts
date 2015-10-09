@@ -35,6 +35,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self._logger.warn('Script directory does not exist')
             return
 
+        self.s = None
         self.running = False
         self.event = Event()
         self.event.set()
@@ -108,7 +109,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
         try:
             settings = self._settings.get([scriptname])
-            self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, settings)
+            # Settings only contains changes, so merge with the defaults.
+            full_settings = self.script_settings[scriptname].copy()
+            full_settings.update(settings)
+            self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, full_settings)
             success, values = scriptobj.run()
             self.so = None
             if success:
