@@ -16,22 +16,36 @@ class FutureSerial(object):
     """
     A proxy for a Serial object that returns Futures and executes `readline()`,
     `write()`, and `close()` in another thread instead of the calling thread.
+
+    If queue implementations are given, they must be thread-safe.  If not, the
+    `Queue` standard library is used.
+
+    The caller is responsible for calling `work_off_reads()` in a read thread
+    and `work_off_writes()` in a write thread.
+
+    To actually run a `readline()`, for example, `single_threaded_readline()`
+    is called on the given `serial` object in the read thread.  `write()` and
+    `close()` call `single_threaded_write()` and `single_threaded_close()` in
+    the write thread.
     """
 
-    def __init__(self):
+    def __init__(self, read_queue=None, write_queue=None, serial=None):
         self.has_serial_event = threading.Event()
         self._serial = None
 
         # Since a serial port can be read from and written to simultaneously, we
         # have two separate queues.  Queue implementations are assumed to be
         # thread-safe.
-        self.read_queue = queue.Queue()
-        self.write_queue = queue.Queue()
+        self.read_queue = read_queue or queue.Queue()
+        self.write_queue = write_queue or queue.Queue()
 
         # These flags are a way to terminate the worker threads.  Set them to
         # True from another thread to make the work loop exit.
         self.done_reading = False
         self.done_writing = False
+
+        # Use property setter after everything else has been initialized.
+        self.serial = serial
 
     @property
     def serial(self):
