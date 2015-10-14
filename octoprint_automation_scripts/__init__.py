@@ -71,11 +71,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
     def _start_work_threads(self):
         if hasattr(self, '_logger'):
             self._logger.debug('Starting work threads...')
-        self._read_thread = Thread(target=self.future_serial.work_off_reads,
+        self._read_thread = Thread(target=self._reads_entrypoint,
                                    name='octoprint_automation_scripts_reads')
         self._read_thread.daemon = True
         self._read_thread.start()
-        self._write_thread = Thread(target=self.future_serial.work_off_writes,
+        self._write_thread = Thread(target=self._writes_entrypoint,
                                     name='octoprint_automation_scripts_writes')
         self._write_thread.daemon = True
         self._write_thread.start()
@@ -84,6 +84,18 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         if hasattr(self, '_logger'):
             self._logger.debug('Stopping work threads...')
         self.future_serial.exit_work_threads(wait=True)
+
+    def _reads_entrypoint(self):
+        try:
+            self.future_serial.work_off_reads()
+        except Exception as e:
+            self._logger.exception('Error while running read work thread: ' + str(e))
+
+    def _writes_entrypoint(self):
+        try:
+            self.future_serial.work_off_writes()
+        except Exception as e:
+            self._logger.exception('Error while running write work thread: ' + str(e))
 
     ## MecodePlugin Interface  ##########################################
 
