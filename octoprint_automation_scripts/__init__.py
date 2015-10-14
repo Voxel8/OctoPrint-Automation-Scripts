@@ -55,10 +55,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         for filename in [f for f in os.listdir(scriptdir) if f.endswith('.py')]:
             path = os.path.join(scriptdir, filename)
             script = imp.load_source('mecodescript', path)
-            self.scripts[script.__script_id__] = script.__script_obj__
-            self.script_titles[script.__script_id__] = script.__script_title__
-            self.script_settings[script.__script_id__] = script.__script_settings__ if hasattr(script, '__script_settings__') else {}
-            self.script_commands[script.__script_id__] = script.__script_commands__ if hasattr(script, '__script_commands__') else lambda s: ""
+            id = script.__script_id__.replace('-', '_').replace(' ', '_')
+            self.scripts[id] = script.__script_obj__
+            self.script_titles[id] = script.__script_title__
+            self.script_settings[id] = script.__script_settings__ if hasattr(script, '__script_settings__') else {}
+            self.script_commands[id] = script.__script_commands__ if hasattr(script, '__script_commands__') else lambda s: ""
 
     ## MecodePlugin Interface  ##########################################
 
