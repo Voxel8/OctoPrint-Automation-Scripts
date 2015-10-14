@@ -55,6 +55,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         for filename in [f for f in os.listdir(scriptdir) if f.endswith('.py')]:
             path = os.path.join(scriptdir, filename)
             script = imp.load_source('mecodescript', path)
+            # script ids can not contain dashes or spaces
             id = script.__script_id__.replace('-', '_').replace(' ', '_')
             self.scripts[id] = script.__script_obj__
             self.script_titles[id] = script.__script_title__
