@@ -115,13 +115,31 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             full_settings = self.script_settings[scriptname].copy()
             full_settings.update(settings)
             self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, full_settings)
-            success, values = scriptobj.run()
+
+            # Actually run the user script.
+            raw_result = scriptobj.run()
+            # Merge raw result with defaults.
+            result = {
+                'wait_for_buffer': True,
+                'storage': {},
+            }
+            # Handle legacy interface.
+            if isinstance(raw_result, tuple):
+                success, values = raw_result
+                raw_result = { 'storage': values } if success else None
+            if raw_result is not None:
+                result.update(raw_result)
+
+            # Ensure that any commands sent to the printer are actually executed
+            # *before* cleaning up the script object.
+            if result.get('wait_for_buffer'):
+                self.g.write("M400", resp_needed=True)
             self.so = None
-            if success:
-                for key, val in values.iteritems():
+
+            # Store script's settings.
+            if result.get('storage') is not None:
+                for key, val in result['storage'].iteritems():
                     self._settings.set([scriptname, key], str(val))
-            else:
-                self._logger.exception('Script failed, not saving values.')
 
         except Exception as e:
             self._logger.exception('Script was forcibly exited: ' + str(e))
