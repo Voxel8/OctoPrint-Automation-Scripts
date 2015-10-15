@@ -183,7 +183,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                     resp = self.g._p.temp_readings[-1]
                 else:
                     if self.so is None or not self.so.response_string:
-                        resp = 'Alignment script is running'
+                        resp = 'Automation script is running'
                     else:
                         resp = self.so.response_string
             return resp
