@@ -90,6 +90,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 )
                 # We need a Printer instance for readline to work.
                 g._p = Printer()
+                g._p.reset_linenumber()
                 self._mecode_thread = Thread(target=self.mecode_entrypoint,
                                              args=(scriptname,),
                                              name='mecode')
