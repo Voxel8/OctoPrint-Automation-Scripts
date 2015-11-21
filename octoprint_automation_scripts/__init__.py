@@ -16,7 +16,7 @@ __copyright__ = "Copyright (C) 2015 Voxel8, Inc."
 
 
 __plugin_name__ = "Automation Scripts"
-__plugin_version__ = "0.2.0"
+__plugin_version__ = "0.2.1"
 __plugin_author__ = "Jack Minardi"
 __plugin_description__ = "Easily run a mecode script from OctoPrint"
 
