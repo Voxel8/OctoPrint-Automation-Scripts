@@ -21,7 +21,7 @@ to be run from within OctoPrint. The scripts need to define a few magic variable
   successfully, and a dictionary of settings items and their values to persist in the settings
   store.
   
-  Finally your object should have an attribute `response_string`. If set to anything other than
+  Finally, your object should have an attribute `script_status`. If set to anything other than
   `None` this value will be echoed to OctoPrint while the script is running.
   
 ### `__script_id__`

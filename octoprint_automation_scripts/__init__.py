@@ -7,6 +7,7 @@ import imp
 from mecode import G
 from mecode.printer import Printer
 import octoprint.plugin
+from octoprint.events import eventManager, Events
 import flask
 
 
@@ -21,6 +22,12 @@ __plugin_description__ = "Easily run a mecode script from OctoPrint"
 
 
 SCRIPT_DIR = os.path.expanduser('~/.mecodescripts')
+
+# Add our own custom events to the Event object
+Events.AUTOMATION_SCRIPT_STARTED = "AutomationScriptStarted"
+Events.AUTOMATION_SCRIPT_FINISHED = "AutomationScriptFinished"
+Events.AUTOMATION_SCRIPT_ERROR = "AutomationScriptError"
+Events.AUTOMATION_SCRIPT_STATUS_CHANGED = "AutomationScriptStatusChanged"
 
 
 class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
@@ -46,6 +53,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.read_lock = Lock()
         self.write_lock = Lock()
         self.so = None
+        self.active_script_id = None
+        self._old_script_status = None
 
         self.scripts = {}
         self.script_titles = {}
@@ -95,6 +104,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                                              args=(script_id,),
                                              name='mecode')
                 self._mecode_thread.start()
+                self.active_script_id = script_id
+                payload = {'id': script_id,
+                           'title': self.script_titles[script_id]}
+                eventManager().fire(Events.AUTOMATION_SCRIPT_STARTED, payload)
 
     def mecode_entrypoint(self, script_id):
         """
@@ -104,6 +117,12 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.execute_script(script_id)
         except Exception as e:
             self._logger.exception('Error while running mecode: ' + str(e))
+            self.active_script_id = None
+            self._old_script_status = None
+            payload = {'id': script_id,
+                       'title': self.script_titles[script_id],
+                       'error': str(e)}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
 
     def execute_script(self, script_id):
         self._logger.info('Mecode script started')
@@ -144,10 +163,18 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
         except Exception as e:
             self._logger.exception('Script was forcibly exited: ' + str(e))
+            payload = {'id': script_id,
+                       'title': self.script_titles[script_id],
+                       'error': str(e)}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
             self.relinquish_control(wait=False)
             return
 
         self.relinquish_control()
+        payload = {'id': script_id,
+                   'title': self.script_titles[script_id],
+                   'result': result['storage']}
+        eventManager().fire(Events.AUTOMATION_SCRIPT_FINISHED, payload)
 
     def relinquish_control(self, wait=True):
         if self.g is None:
@@ -159,6 +186,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.g.teardown(wait=wait)
             self.g = None
             self.running = False
+            self.active_script_id = None
+            self._old_script_status = None
             self._fake_ok = True
             self._temp_resp_len = 0
             self.event.set()
@@ -183,10 +212,15 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                     self._temp_resp_len = len(self.g._p.temp_readings)
                     resp = self.g._p.temp_readings[-1]
                 else:
-                    if self.so is None or not self.so.response_string:
-                        resp = 'Automation script is running'
-                    else:
-                        resp = self.so.response_string
+                    resp = '>>> Automation Script Running'
+                    if self.so is not None and self.so.script_status:
+                        resp += ': ' + self.so.script_status
+                        if self.so.script_status != self._old_script_status:
+                            self._old_script_status = self.so.script_status
+                            payload = {'id': self.active_script_id,
+                                       'title': self.script_titles[self.active_script_id],
+                                       'status': self.so.script_status}
+                            eventManager().fire(Events.AUTOMATION_SCRIPT_STATUS_CHANGED, payload)
             return resp
 
     def write(self, data):
