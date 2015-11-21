@@ -64,7 +64,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     ## MecodePlugin Interface  ##########################################
 
-    def start(self, scriptname):
+    def start(self, script_id):
         if self.running:
             self._logger.warn("Can't start mecode script while previous one is running")
             return
@@ -92,30 +92,30 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 g._p = Printer()
                 g._p.reset_linenumber()
                 self._mecode_thread = Thread(target=self.mecode_entrypoint,
-                                             args=(scriptname,),
+                                             args=(script_id,),
                                              name='mecode')
                 self._mecode_thread.start()
 
-    def mecode_entrypoint(self, scriptname):
+    def mecode_entrypoint(self, script_id):
         """
         Entrypoint for the mecode thread.  All exceptions are caught and logged.
         """
         try:
-            self.execute_script(scriptname)
+            self.execute_script(script_id)
         except Exception as e:
             self._logger.exception('Error while running mecode: ' + str(e))
 
-    def execute_script(self, scriptname):
+    def execute_script(self, script_id):
         self._logger.info('Mecode script started')
         self.g._p.connect(self.s)
         self.g._p.start()
 
         try:
-            settings = self._settings.get([scriptname])
+            settings = self._settings.get([script_id])
             # Settings only contains changes, so merge with the defaults.
-            full_settings = self.script_settings[scriptname].copy()
+            full_settings = self.script_settings[script_id].copy()
             full_settings.update(settings)
-            self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, full_settings)
+            self.so = scriptobj = self.scripts[script_id](self.g, self._logger, full_settings)
 
             # Actually run the user script.
             raw_result = scriptobj.run()
@@ -140,7 +140,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             # Store script's settings.
             if result.get('storage') is not None:
                 for key, val in result['storage'].iteritems():
-                    self._settings.set([scriptname, key], str(val))
+                    self._settings.set([script_id, key], str(val))
 
         except Exception as e:
             self._logger.exception('Script was forcibly exited: ' + str(e))
