@@ -99,7 +99,6 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 )
                 # We need a Printer instance for readline to work.
                 g._p = Printer()
-                g._p.reset_linenumber()
                 self._mecode_thread = Thread(target=self.mecode_entrypoint,
                                              args=(script_id,),
                                              name='mecode')
@@ -117,6 +116,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.execute_script(script_id)
         except Exception as e:
             self._logger.exception('Error while running mecode: ' + str(e))
+            self.running = False
             self.active_script_id = None
             self._old_script_status = None
             payload = {'id': script_id,
@@ -128,6 +128,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self._logger.info('Mecode script started')
         self.g._p.connect(self.s)
         self.g._p.start()
+        self.g._p.reset_linenumber()  # ensure we start off in a clean state
 
         try:
             settings = self._settings.get([script_id])
