@@ -27,6 +27,7 @@ SCRIPT_DIR = os.path.expanduser('~/.mecodescripts')
 Events.AUTOMATION_SCRIPT_STARTED = "AutomationScriptStarted"
 Events.AUTOMATION_SCRIPT_FINISHED = "AutomationScriptFinished"
 Events.AUTOMATION_SCRIPT_ERROR = "AutomationScriptError"
+Events.AUTOMATION_SCRIPT_FAILED = "AutomationScriptFailed"
 Events.AUTOMATION_SCRIPT_STATUS_CHANGED = "AutomationScriptStatusChanged"
 
 
@@ -143,6 +144,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             result = {
                 'wait_for_buffer': True,
                 'storage': {},
+                'success': True,
+                'failure_reason': '',
             }
             # Handle legacy interface.
             if isinstance(raw_result, tuple):
@@ -153,12 +156,12 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
             # Ensure that any commands sent to the printer are actually executed
             # *before* cleaning up the script object.
-            if result.get('wait_for_buffer'):
+            if result['wait_for_buffer']:
                 self.g.write("M400", resp_needed=True)
             self.so = None
 
             # Store script's settings.
-            if result.get('storage') is not None:
+            if result['success'] and result['storage'] is not None:
                 for key, val in result['storage'].iteritems():
                     self._settings.set([script_id, key], str(val))
 
@@ -172,10 +175,17 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             return
 
         self.relinquish_control()
-        payload = {'id': script_id,
-                   'title': self.script_titles[script_id],
-                   'result': result['storage']}
-        eventManager().fire(Events.AUTOMATION_SCRIPT_FINISHED, payload)
+
+        if result['success']:
+            payload = {'id': script_id,
+                    'title': self.script_titles[script_id],
+                    'result': result['storage']}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_FINISHED, payload)
+        else:
+            payload = {'id': script_id,
+                    'title': self.script_titles[script_id],
+                    'failure_reason': result['failure_reason']}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_FAILED, payload)
 
     def relinquish_control(self, wait=True):
         if self.g is None:
