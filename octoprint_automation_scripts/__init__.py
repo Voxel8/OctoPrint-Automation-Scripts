@@ -189,7 +189,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             eventManager().fire(Events.AUTOMATION_SCRIPT_FAILED, payload)
 
     def relinquish_control(self, wait=True):
-        with self._disconnect_lock():
+        with self._disconnect_lock:
             if self.g is None:
                 return
             self._logger.info('Resetting Line Number to 0')
