@@ -56,6 +56,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.so = None
         self.active_script_id = None
         self._old_script_status = None
+        self._disconnect_lock = Lock()
 
         self.scripts = {}
         self.script_titles = {}
@@ -188,21 +189,22 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             eventManager().fire(Events.AUTOMATION_SCRIPT_FAILED, payload)
 
     def relinquish_control(self, wait=True):
-        if self.g is None:
-            return
-        self._logger.info('Resetting Line Number to 0')
-        self.g._p.reset_linenumber()
-        with self.read_lock:
-            self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
-            self.g.teardown(wait=wait)
-            self.g = None
-            self.running = False
-            self.active_script_id = None
-            self._old_script_status = None
-            self._fake_ok = True
-            self._temp_resp_len = 0
-            self.event.set()
-            self._logger.info('teardown finished, returning control to host')
+        with self._disconnect_lock():
+            if self.g is None:
+                return
+            self._logger.info('Resetting Line Number to 0')
+            self.g._p.reset_linenumber()
+            with self.read_lock:
+                self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
+                self.g.teardown(wait=wait)
+                self.g = None
+                self.running = False
+                self.active_script_id = None
+                self._old_script_status = None
+                self._fake_ok = True
+                self._temp_resp_len = 0
+                self.event.set()
+                self._logger.info('teardown finished, returning control to host')
 
     ## serial.Serial Interface  ################################################
 
