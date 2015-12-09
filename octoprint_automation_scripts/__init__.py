@@ -387,10 +387,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         )
 
     def on_api_command(self, command, data):
-        if command in self.scripts:
-            self.start(command)
-        elif command == 'cancel':
+        if command == 'cancel':
             self.relinquish_control(wait=False)
+        elif command in self.scripts:
+            self.start(command)
 
     def on_api_get(self, request):
         return flask.jsonify(script_titles=self.script_titles)

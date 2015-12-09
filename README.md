@@ -27,6 +27,7 @@ to be run from within OctoPrint. The scripts need to define a few magic variable
 ### `__script_id__`
   
   The identifier for this script. Must be globally unique and can not contain spaces or dashes.
+  The identifier also can not be the string `cancel`.
     
 ### `__script_title__`
   
