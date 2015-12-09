@@ -16,7 +16,7 @@ __copyright__ = "Copyright (C) 2015 Voxel8, Inc."
 
 
 __plugin_name__ = "Automation Scripts"
-__plugin_version__ = "0.2.1"
+__plugin_version__ = "0.3.0"
 __plugin_author__ = "Jack Minardi"
 __plugin_description__ = "Easily run a mecode script from OctoPrint"
 
@@ -218,22 +218,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 resp = 'ok\n'
             elif not self.running:
                 resp = self.s.readline(*args, **kwargs)
-            else:
-                # We are running.
-                if len(self.g._p.temp_readings) > self._temp_resp_len:
-                    # We have a new temp reading.  Respond with that.
-                    self._temp_resp_len = len(self.g._p.temp_readings)
-                    resp = self.g._p.temp_readings[-1]
-                else:
-                    resp = '>>> Automation Script Running'
-                    if self.so is not None and self.so.script_status:
-                        resp += ': ' + self.so.script_status
-                        if self.so.script_status != self._old_script_status:
-                            self._old_script_status = self.so.script_status
-                            payload = {'id': self.active_script_id,
-                                       'title': self.script_titles[self.active_script_id],
-                                       'status': self.so.script_status}
-                            eventManager().fire(Events.AUTOMATION_SCRIPT_STATUS_CHANGED, payload)
+            else: # We are running.
+                resp = self._generate_fake_response()
             return resp
 
     def write(self, data):
@@ -253,6 +239,23 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self._temp_resp_len = 0
             self.event.set()
         return self.s.close()
+
+    def _generate_fake_response(self):
+        if len(self.g._p.temp_readings) > self._temp_resp_len:
+            # We have a new temp reading.  Respond with that.
+            self._temp_resp_len = len(self.g._p.temp_readings)
+            resp = self.g._p.temp_readings[-1]
+        else:
+            resp = '>>> Automation Script Running'
+            if hasattr(self.so, 'script_status') and self.so.script_status:
+                resp += ': ' + self.so.script_status
+                if self.so.script_status != self._old_script_status:
+                    self._old_script_status = self.so.script_status
+                    payload = {'id': self.active_script_id,
+                                'title': self.script_titles[self.active_script_id],
+                                'status': self.so.script_status}
+                    eventManager().fire(Events.AUTOMATION_SCRIPT_STATUS_CHANGED, payload)
+        return resp
 
     ## Plugin Hooks  ###########################################################
 
