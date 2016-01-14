@@ -7,6 +7,7 @@ import imp
 from mecode import G
 from mecode.printer import Printer
 import octoprint.plugin
+from octoprint.events import eventManager, Events
 import flask
 
 
@@ -15,12 +16,19 @@ __copyright__ = "Copyright (C) 2015 Voxel8, Inc."
 
 
 __plugin_name__ = "Automation Scripts"
-__plugin_version__ = "0.2.0"
+__plugin_version__ = "0.3.0"
 __plugin_author__ = "Jack Minardi"
 __plugin_description__ = "Easily run a mecode script from OctoPrint"
 
 
 SCRIPT_DIR = os.path.expanduser('~/.mecodescripts')
+
+# Add our own custom events to the Event object
+Events.AUTOMATION_SCRIPT_STARTED = "AutomationScriptStarted"
+Events.AUTOMATION_SCRIPT_FINISHED = "AutomationScriptFinished"
+Events.AUTOMATION_SCRIPT_ERROR = "AutomationScriptError"
+Events.AUTOMATION_SCRIPT_FAILED = "AutomationScriptFailed"
+Events.AUTOMATION_SCRIPT_STATUS_CHANGED = "AutomationScriptStatusChanged"
 
 
 class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
@@ -46,6 +54,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.read_lock = Lock()
         self.write_lock = Lock()
         self.so = None
+        self.active_script_id = None
+        self._old_script_status = None
+        self._disconnect_lock = Lock()
 
         self.scripts = {}
         self.script_titles = {}
@@ -64,7 +75,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     ## MecodePlugin Interface  ##########################################
 
-    def start(self, scriptname):
+    def start(self, script_id):
         if self.running:
             self._logger.warn("Can't start mecode script while previous one is running")
             return
@@ -90,32 +101,43 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 )
                 # We need a Printer instance for readline to work.
                 g._p = Printer()
-                g._p.reset_linenumber()
                 self._mecode_thread = Thread(target=self.mecode_entrypoint,
-                                             args=(scriptname,),
+                                             args=(script_id,),
                                              name='mecode')
                 self._mecode_thread.start()
+                self.active_script_id = script_id
+                payload = {'id': script_id,
+                           'title': self.script_titles[script_id]}
+                eventManager().fire(Events.AUTOMATION_SCRIPT_STARTED, payload)
 
-    def mecode_entrypoint(self, scriptname):
+    def mecode_entrypoint(self, script_id):
         """
         Entrypoint for the mecode thread.  All exceptions are caught and logged.
         """
         try:
-            self.execute_script(scriptname)
+            self.execute_script(script_id)
         except Exception as e:
             self._logger.exception('Error while running mecode: ' + str(e))
+            self.running = False
+            self.active_script_id = None
+            self._old_script_status = None
+            payload = {'id': script_id,
+                       'title': self.script_titles[script_id],
+                       'error': str(e)}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
 
-    def execute_script(self, scriptname):
+    def execute_script(self, script_id):
         self._logger.info('Mecode script started')
         self.g._p.connect(self.s)
         self.g._p.start()
+        self.g._p.reset_linenumber()  # ensure we start off in a clean state
 
         try:
-            settings = self._settings.get([scriptname])
+            settings = self._settings.get([script_id])
             # Settings only contains changes, so merge with the defaults.
-            full_settings = self.script_settings[scriptname].copy()
+            full_settings = self.script_settings[script_id].copy()
             full_settings.update(settings)
-            self.so = scriptobj = self.scripts[scriptname](self.g, self._logger, full_settings)
+            self.so = scriptobj = self.scripts[script_id](self.g, self._logger, full_settings)
 
             # Actually run the user script.
             raw_result = scriptobj.run()
@@ -123,6 +145,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             result = {
                 'wait_for_buffer': True,
                 'storage': {},
+                'success': True,
+                'failure_reason': '',
             }
             # Handle legacy interface.
             if isinstance(raw_result, tuple):
@@ -133,36 +157,54 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
             # Ensure that any commands sent to the printer are actually executed
             # *before* cleaning up the script object.
-            if result.get('wait_for_buffer'):
+            if result['wait_for_buffer']:
                 self.g.write("M400", resp_needed=True)
             self.so = None
 
             # Store script's settings.
-            if result.get('storage') is not None:
+            if result['success'] and result['storage'] is not None:
                 for key, val in result['storage'].iteritems():
-                    self._settings.set([scriptname, key], str(val))
+                    self._settings.set([script_id, key], str(val))
 
         except Exception as e:
             self._logger.exception('Script was forcibly exited: ' + str(e))
+            payload = {'id': script_id,
+                       'title': self.script_titles[script_id],
+                       'error': str(e)}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
             self.relinquish_control(wait=False)
             return
 
         self.relinquish_control()
 
+        if result['success']:
+            payload = {'id': script_id,
+                    'title': self.script_titles[script_id],
+                    'result': result['storage']}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_FINISHED, payload)
+        else:
+            payload = {'id': script_id,
+                    'title': self.script_titles[script_id],
+                    'failure_reason': result['failure_reason']}
+            eventManager().fire(Events.AUTOMATION_SCRIPT_FAILED, payload)
+
     def relinquish_control(self, wait=True):
-        if self.g is None:
-            return
-        self._logger.info('Resetting Line Number to 0')
-        self.g._p.reset_linenumber()
-        with self.read_lock:
-            self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
-            self.g.teardown(wait=wait)
-            self.g = None
-            self.running = False
-            self._fake_ok = True
-            self._temp_resp_len = 0
-            self.event.set()
-            self._logger.info('teardown finished, returning control to host')
+        with self._disconnect_lock:
+            if self.g is None:
+                return
+            self._logger.info('Resetting Line Number to 0')
+            self.g._p.reset_linenumber()
+            with self.read_lock:
+                self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
+                self.g.teardown(wait=wait)
+                self.g = None
+                self.running = False
+                self.active_script_id = None
+                self._old_script_status = None
+                self._fake_ok = True
+                self._temp_resp_len = 0
+                self.event.set()
+                self._logger.info('teardown finished, returning control to host')
 
     ## serial.Serial Interface  ################################################
 
@@ -176,17 +218,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 resp = 'ok\n'
             elif not self.running:
                 resp = self.s.readline(*args, **kwargs)
-            else:
-                # We are running.
-                if len(self.g._p.temp_readings) > self._temp_resp_len:
-                    # We have a new temp reading.  Respond with that.
-                    self._temp_resp_len = len(self.g._p.temp_readings)
-                    resp = self.g._p.temp_readings[-1]
-                else:
-                    if self.so is None or not self.so.response_string:
-                        resp = 'Automation script is running'
-                    else:
-                        resp = self.so.response_string
+            else: # We are running.
+                resp = self._generate_fake_response()
             return resp
 
     def write(self, data):
@@ -206,6 +239,23 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self._temp_resp_len = 0
             self.event.set()
         return self.s.close()
+
+    def _generate_fake_response(self):
+        if len(self.g._p.temp_readings) > self._temp_resp_len:
+            # We have a new temp reading.  Respond with that.
+            self._temp_resp_len = len(self.g._p.temp_readings)
+            resp = self.g._p.temp_readings[-1]
+        else:
+            resp = '>>> Automation Script Running'
+            if hasattr(self.so, 'script_status') and self.so.script_status:
+                resp += ': ' + self.so.script_status
+                if self.so.script_status != self._old_script_status:
+                    self._old_script_status = self.so.script_status
+                    payload = {'id': self.active_script_id,
+                                'title': self.script_titles[self.active_script_id],
+                                'status': self.so.script_status}
+                    eventManager().fire(Events.AUTOMATION_SCRIPT_STATUS_CHANGED, payload)
+        return resp
 
     ## Plugin Hooks  ###########################################################
 
@@ -332,11 +382,14 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def get_api_commands(self):
         return dict(
-            [(script_id, []) for script_id in self.scripts]
+            [(script_id, []) for script_id in self.scripts] +
+            [('cancel', [])]
         )
 
     def on_api_command(self, command, data):
-        if command in self.scripts:
+        if command == 'cancel':
+            self.relinquish_control(wait=False)
+        elif command in self.scripts:
             self.start(command)
 
     def on_api_get(self, request):
