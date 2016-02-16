@@ -84,6 +84,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         if self.g is not None:
             raise RuntimeError("I was trying to start the script and expected self.g to be None, but it isn't")
 
+        payload = {'id': script_id,
+                    'title': self.script_titles[script_id]}
+        eventManager().fire(Events.AUTOMATION_SCRIPT_STARTED, payload)
         with self.read_lock:
             with self.write_lock:
                 self.event.clear()
@@ -106,9 +109,6 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                                              name='mecode')
                 self._mecode_thread.start()
                 self.active_script_id = script_id
-                payload = {'id': script_id,
-                           'title': self.script_titles[script_id]}
-                eventManager().fire(Events.AUTOMATION_SCRIPT_STARTED, payload)
 
     def mecode_entrypoint(self, script_id):
         """
