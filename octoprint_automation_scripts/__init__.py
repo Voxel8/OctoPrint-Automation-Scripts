@@ -342,7 +342,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def send_script_commands(self):
         for name, script_commands in self.script_commands.iteritems():
-            cmd = script_commands(self._settings.get([name]))
+            full_settings = self.script_settings[script_id].copy()
+            full_settings.update(self._settings.get([script_id]))
+            cmd = script_commands(full_settings)
             self._printer.commands(cmd)
 
     ### SettingsPlugin API  ####################################################
