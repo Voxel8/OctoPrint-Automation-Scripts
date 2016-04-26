@@ -75,7 +75,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     ## MecodePlugin Interface  ##########################################
 
-    def start(self, script_id):
+    def start(self, script_id, extra_args={}):
         if self.running:
             self._logger.warn("Can't start mecode script while previous one is running")
             return
@@ -85,7 +85,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             raise RuntimeError("I was trying to start the script and expected self.g to be None, but it isn't")
 
         payload = {'id': script_id,
-                    'title': self.script_titles[script_id]}
+                   'title': self.script_titles[script_id]}
         eventManager().fire(Events.AUTOMATION_SCRIPT_STARTED, payload)
         with self.read_lock:
             with self.write_lock:
@@ -105,17 +105,17 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 # We need a Printer instance for readline to work.
                 g._p = Printer()
                 self._mecode_thread = Thread(target=self.mecode_entrypoint,
-                                             args=(script_id,),
+                                             args=(script_id, extra_args),
                                              name='mecode')
                 self._mecode_thread.start()
                 self.active_script_id = script_id
 
-    def mecode_entrypoint(self, script_id):
+    def mecode_entrypoint(self, script_id, extra_args):
         """
         Entrypoint for the mecode thread.  All exceptions are caught and logged.
         """
         try:
-            self.execute_script(script_id)
+            self.execute_script(script_id, extra_args)
         except Exception as e:
             self._logger.exception('Error while running mecode: ' + str(e))
             self.running = False
@@ -126,7 +126,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                        'error': str(e)}
             eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
 
-    def execute_script(self, script_id):
+    def execute_script(self, script_id, extra_args):
         self._logger.info('Mecode script started')
         self.g._p.connect(self.s)
         self.g._p.start()
@@ -140,7 +140,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.so = scriptobj = self.scripts[script_id](self.g, self._logger, full_settings)
 
             # Actually run the user script.
-            raw_result = scriptobj.run()
+            try:
+                raw_result = scriptobj.run(**extra_args)
+            except TypeError:  # accepting extra_args is optional
+                raw_result = scriptobj.run()
             # Merge raw result with defaults.
             result = {
                 'wait_for_buffer': True,
@@ -392,7 +395,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         if command == 'cancel':
             self.relinquish_control(wait=False)
         elif command in self.scripts:
-            self.start(command)
+            self.start(command, data)
 
     def on_api_get(self, request):
         return flask.jsonify(script_titles=self.script_titles)

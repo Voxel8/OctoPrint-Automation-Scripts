@@ -15,9 +15,9 @@ to be run from within OctoPrint. The scripts need to define a few magic variable
   
   settings : A dict containing the stored user settings for your script.
   
-  Your object must also define a `run()` method that takes no arguments. This method is called
-  when the user clicks the button corresponging to your script. The `run()` method is expected
-  to return two things: A boolean value representing whether or not the script completed
+  Your object must also define a `run()` method. This method may optionally take keyword arguments.
+  The `run()` method is called when the user clicks the button corresponding to your script. It is
+  expected to return two things: A boolean value representing whether or not the script completed
   successfully, and a dictionary of settings items and their values to persist in the settings
   store.
   
