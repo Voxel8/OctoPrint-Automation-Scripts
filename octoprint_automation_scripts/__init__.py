@@ -408,5 +408,5 @@ def __plugin_load__():
     __plugin_hooks__ = {
         "octoprint.comm.transport.serial.factory": plugin.serial_factory,
         #"octoprint.comm.protocol.gcode.queuing": plugin.print_started_sentinel,
-        "octoprint.plugin.softwareupdate.check_config": plugin.get_update_information,
+        #"octoprint.plugin.softwareupdate.check_config": plugin.get_update_information,
     }
