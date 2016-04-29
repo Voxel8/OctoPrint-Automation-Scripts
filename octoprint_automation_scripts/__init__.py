@@ -395,6 +395,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         if command == 'cancel':
             self.relinquish_control(wait=False)
         elif command in self.scripts:
+            del data['command']
             self.start(command, data)
 
     def on_api_get(self, request):
