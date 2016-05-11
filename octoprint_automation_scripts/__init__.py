@@ -142,7 +142,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             # Actually run the user script.
             try:
                 raw_result = scriptobj.run(**extra_args)
-            except TypeError:  # accepting extra_args is optional
+            except TypeError as e:  # accepting extra_args is optional
+                self._logger.info("Retrying script with no arguments, error was: " + str(e))
                 raw_result = scriptobj.run()
             # Merge raw result with defaults.
             result = {
