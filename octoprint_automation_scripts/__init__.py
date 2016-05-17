@@ -75,6 +75,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     ## MecodePlugin Interface  ##########################################
 
+    def _is_running(self):
+        return self.running
+
     def start(self, script_id, extra_args={}):
         if self.running:
             self._logger.warn("Can't start mecode script while previous one is running")
