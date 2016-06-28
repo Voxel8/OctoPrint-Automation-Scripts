@@ -56,6 +56,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.so = None
         self.active_script_id = None
         self._old_script_status = None
+        self.saved_line_number = None
         self._disconnect_lock = Lock()
 
         self.scripts = {}
@@ -131,6 +132,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def execute_script(self, script_id, extra_args):
         self._logger.info('Mecode script started')
+        
+        self.saved_line_number = self._printer._comm._currentLine - 1
         self.g._p.connect(self.s)
         self.g._p.start()
         self.g._p.reset_linenumber()  # ensure we start off in a clean state
@@ -199,8 +202,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         with self._disconnect_lock:
             if self.g is None:
                 return
-            self._logger.info('Resetting Line Number to 0')
-            self.g._p.reset_linenumber()
+            self._logger.info('Resetting Line Number to %s'%self.saved_line_number)
+            self.g._p.reset_linenumber(self.saved_line_number)
             with self.read_lock:
                 self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
                 self.g.teardown(wait=wait)
@@ -210,6 +213,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 self._old_script_status = None
                 self._fake_ok = True
                 self._temp_resp_len = 0
+                self.saved_line_number = None
                 self.event.set()
                 self._logger.info('teardown finished, returning control to host')
 
