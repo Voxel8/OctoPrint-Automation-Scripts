@@ -58,6 +58,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self._old_script_status = None
         self.saved_line_number = None
         self._disconnect_lock = Lock()
+        self._cancelled = False
 
         self.scripts = {}
         self.script_titles = {}
@@ -80,6 +81,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         return self.running
 
     def start(self, script_id, extra_args={}):
+        self._cancelled = False
         if self.running:
             self._logger.warn("Can't start mecode script while previous one is running")
             return
@@ -125,14 +127,14 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.running = False
             self.active_script_id = None
             self._old_script_status = None
-            payload = {'id': script_id,
-                       'title': self.script_titles[script_id],
-                       'error': str(e)}
-            eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
+            if not self._cancelled:
+                payload = {'id': script_id,
+                        'title': self.script_titles[script_id],
+                        'error': str(e)}
+                eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
 
     def execute_script(self, script_id, extra_args):
         self._logger.info('Mecode script started')
-        
         self.saved_line_number = self._printer._comm._currentLine - 1
         self.g._p.connect(self.s)
         self.g._p.start()
@@ -178,10 +180,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
         except Exception as e:
             self._logger.exception('Script was forcibly exited: ' + str(e))
-            payload = {'id': script_id,
-                       'title': self.script_titles[script_id],
-                       'error': str(e)}
-            eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
+            if not self._cancelled:
+                payload = {'id': script_id,
+                        'title': self.script_titles[script_id],
+                        'error': str(e)}
+                eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
             self.relinquish_control(wait=False)
             return
 
@@ -401,6 +404,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def on_api_command(self, command, data):
         if command == 'cancel':
+            self._cancelled = True
             self.relinquish_control(wait=False)
         elif command in self.scripts:
             del data['command']
