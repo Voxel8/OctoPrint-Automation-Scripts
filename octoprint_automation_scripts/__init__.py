@@ -159,6 +159,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 'storage': {},
                 'success': True,
                 'failure_reason': '',
+                'success_message': '',
             }
             # Handle legacy interface.
             if isinstance(raw_result, tuple):
@@ -193,7 +194,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         if result['success']:
             payload = {'id': script_id,
                     'title': self.script_titles[script_id],
-                    'result': result['storage']}
+                    'result': result['storage'],
+                    'success_message': result['success_message']}
             eventManager().fire(Events.AUTOMATION_SCRIPT_FINISHED, payload)
         else:
             payload = {'id': script_id,
