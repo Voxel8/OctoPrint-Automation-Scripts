@@ -32,11 +32,11 @@ Events.AUTOMATION_SCRIPT_STATUS_CHANGED = "AutomationScriptStatusChanged"
 
 
 class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
-                          octoprint.plugin.SettingsPlugin,
-                          octoprint.plugin.TemplatePlugin,
-                          octoprint.plugin.AssetPlugin,
-                          octoprint.plugin.SimpleApiPlugin,
-                          ):
+                   octoprint.plugin.SettingsPlugin,
+                   octoprint.plugin.TemplatePlugin,
+                   octoprint.plugin.AssetPlugin,
+                   octoprint.plugin.SimpleApiPlugin,
+                   ):
 
     def __init__(self):
         if not os.path.exists(SCRIPT_DIR):
@@ -65,17 +65,21 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         self.script_settings = {}
         self.script_commands = {}
         scriptdir = SCRIPT_DIR
-        for i, filename in enumerate([f for f in os.listdir(scriptdir) if f.endswith('.py')]):
+        for i, filename in enumerate(
+            [f for f in os.listdir(scriptdir) if f.endswith('.py')]
+        ):
             path = os.path.join(scriptdir, filename)
-            script = imp.load_source('mecodescript'+str(i), path)
+            script = imp.load_source('mecodescript' + str(i), path)
             # script ids can not contain dashes or spaces
             id = script.__script_id__.replace('-', '_').replace(' ', '_')
             self.scripts[id] = script.__script_obj__
             self.script_titles[id] = script.__script_title__
-            self.script_settings[id] = script.__script_settings__ if hasattr(script, '__script_settings__') else {}
-            self.script_commands[id] = script.__script_commands__ if hasattr(script, '__script_commands__') else lambda s: ""
+            self.script_settings[id] = script.__script_settings__ if hasattr(
+                script, '__script_settings__') else {}
+            self.script_commands[id] = script.__script_commands__ if hasattr(
+                script, '__script_commands__') else lambda s: ""
 
-    ## MecodePlugin Interface  ##########################################
+    # MecodePlugin Interface  ##########################################
 
     def _is_running(self):
         return self.running
@@ -83,12 +87,15 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
     def start(self, script_id, extra_args={}):
         self._cancelled = False
         if self.running:
-            self._logger.warn("Can't start mecode script while previous one is running")
+            self._logger.warn(
+                "Can't start mecode script while previous one is running")
             return
 
         # This is an assertion about our expected internal state.
         if self.g is not None:
-            raise RuntimeError("I was trying to start the script and expected self.g to be None, but it isn't")
+            raise RuntimeError(
+                "I was trying to start the script and expected self.g to"
+                "be None, but it isn't")
 
         payload = {'id': script_id,
                    'title': self.script_titles[script_id]}
@@ -102,10 +109,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                     aerotech_include=False,
                     direct_write=True,
                     direct_write_mode='serial',
-                    layer_height = 0.19,
-                    extrusion_width = 0.4,
-                    filament_diameter = 1.75,
-                    extrusion_multiplier = 1.00,
+                    layer_height=0.19,
+                    extrusion_width=0.4,
+                    filament_diameter=1.75,
+                    extrusion_multiplier=1.00,
                     setup=False,
                 )
                 # We need a Printer instance for readline to work.
@@ -118,7 +125,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
     def mecode_entrypoint(self, script_id, extra_args):
         """
-        Entrypoint for the mecode thread.  All exceptions are caught and logged.
+        Entrypoint for the mecode thread. All exceptions are caught and logged.
         """
         try:
             self.execute_script(script_id, extra_args)
@@ -127,10 +134,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.running = False
             self.active_script_id = None
             self._old_script_status = None
+            self.g = None
             if not self._cancelled:
                 payload = {'id': script_id,
-                        'title': self.script_titles[script_id],
-                        'error': str(e)}
+                           'title': self.script_titles[script_id],
+                           'error': str(e)}
                 eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
 
     def execute_script(self, script_id, extra_args):
@@ -145,13 +153,15 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             # Settings only contains changes, so merge with the defaults.
             full_settings = self.script_settings[script_id].copy()
             full_settings.update(settings)
-            self.so = scriptobj = self.scripts[script_id](self.g, self._logger, full_settings)
+            self.so = scriptobj = self.scripts[script_id](
+                self.g, self._logger, full_settings)
 
             # Actually run the user script.
             try:
                 raw_result = scriptobj.run(**extra_args)
             except TypeError as e:  # accepting extra_args is optional
-                self._logger.info("Retrying script with no arguments, error was: " + str(e))
+                self._logger.info(
+                    "Retrying script with no arguments, error was: " + str(e))
                 raw_result = scriptobj.run()
             # Merge raw result with defaults.
             result = {
@@ -164,12 +174,12 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             # Handle legacy interface.
             if isinstance(raw_result, tuple):
                 success, values = raw_result
-                raw_result = { 'storage': values } if success else None
+                raw_result = {'storage': values} if success else None
             if raw_result is not None:
                 result.update(raw_result)
 
-            # Ensure that any commands sent to the printer are actually executed
-            # *before* cleaning up the script object.
+            # Ensure that any commands sent to the printer are actually
+            # executed *before* cleaning up the script object.
             if result['wait_for_buffer']:
                 self.g.write("M400", resp_needed=True)
             self.so = None
@@ -183,8 +193,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self._logger.exception('Script was forcibly exited: ' + str(e))
             if not self._cancelled:
                 payload = {'id': script_id,
-                        'title': self.script_titles[script_id],
-                        'error': str(e)}
+                           'title': self.script_titles[script_id],
+                           'error': str(e)}
                 eventManager().fire(Events.AUTOMATION_SCRIPT_ERROR, payload)
             self.relinquish_control(wait=False)
             return
@@ -193,24 +203,26 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
 
         if result['success']:
             payload = {'id': script_id,
-                    'title': self.script_titles[script_id],
-                    'result': result['storage'],
-                    'success_message': result['success_message']}
+                       'title': self.script_titles[script_id],
+                       'result': result['storage'],
+                       'success_message': result['success_message']}
             eventManager().fire(Events.AUTOMATION_SCRIPT_FINISHED, payload)
         else:
             payload = {'id': script_id,
-                    'title': self.script_titles[script_id],
-                    'failure_reason': result['failure_reason']}
+                       'title': self.script_titles[script_id],
+                       'failure_reason': result['failure_reason']}
             eventManager().fire(Events.AUTOMATION_SCRIPT_FAILED, payload)
 
     def relinquish_control(self, wait=True):
         with self._disconnect_lock:
             if self.g is None:
                 return
-            self._logger.info('Resetting Line Number to %s'%self.saved_line_number)
+            self._logger.info('Resetting Line Number to %s' %
+                              self.saved_line_number)
             self.g._p.reset_linenumber(self.saved_line_number)
             with self.read_lock:
-                self._logger.info('Tearing down, waiting for buffer to clear: ' + str(wait))
+                self._logger.info(
+                    'Tearing down, waiting for buffer to clear: ' + str(wait))
                 self.g.teardown(wait=wait)
                 self.g = None
                 self.running = False
@@ -220,9 +232,10 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 self._temp_resp_len = 0
                 self.saved_line_number = None
                 self.event.set()
-                self._logger.info('teardown finished, returning control to host')
+                self._logger.info(
+                    'teardown finished, returning control to host')
 
-    ## serial.Serial Interface  ################################################
+    # serial.Serial Interface  ##############################################
 
     def readline(self, *args, **kwargs):
         if self.running:
@@ -234,7 +247,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 resp = 'ok\n'
             elif not self.running:
                 resp = self.s.readline(*args, **kwargs)
-            else: # We are running.
+            else:  # We are running.
                 resp = self._generate_fake_response()
             return resp
 
@@ -243,7 +256,9 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             if not self.running:
                 return self.s.write(data)
             else:
-                self._logger.warn('Write called when Mecode has control, ignoring: ' + str(data))
+                self._logger.warn(
+                    'Write called when Mecode has control, ignoring: ' +
+                    str(data))
 
     def close(self):
         with self.write_lock:
@@ -268,20 +283,17 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 if self.so.script_status != self._old_script_status:
                     self._old_script_status = self.so.script_status
                     payload = {'id': self.active_script_id,
-                                'title': self.script_titles[self.active_script_id],
-                                'status': self.so.script_status}
-                    eventManager().fire(Events.AUTOMATION_SCRIPT_STATUS_CHANGED, payload)
+                               'title':
+                               self.script_titles[self.active_script_id],
+                               'status': self.so.script_status}
+                    eventManager().fire(
+                        Events.AUTOMATION_SCRIPT_STATUS_CHANGED, payload)
         return resp
 
-    ## Plugin Hooks  ###########################################################
+    # Plugin Hooks  #########################################################
 
-    #def print_started_sentinel(self, comm, phase, cmd, cmd_type, gcode, *args, **kwargs):
-    #    if 'M900' in cmd:
-    #        self.start()
-    #        return None
-    #    return cmd
-
-    def serial_factory(self, comm_instance, port, baudrate, connection_timeout):
+    def serial_factory(self, comm_instance, port, baudrate,
+                       connection_timeout):
         if port == 'VIRTUAL':
             return None
         # The following is based on:
@@ -291,9 +303,11 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             comm_instance._changeState(comm_instance.STATE_DETECT_SERIAL)
             serial_obj = comm_instance._detectPort(True)
             if serial_obj is None:
-                comm_instance._errorValue = 'Failed to autodetect serial port, please set it manually.'
+                comm_instance._errorValue = ("Failed to autodetect serial "
+                                             "port, please set it manually.")
                 comm_instance._changeState(comm_instance.STATE_ERROR)
-                comm_instance._log("Failed to autodetect serial port, please set it manually.")
+                comm_instance._log("Failed to autodetect serial port, "
+                                   "please set it manually.")
                 return None
 
             port = serial_obj.port
@@ -304,10 +318,16 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             # We can't call OctoPrint's private baudrateList() function, so
             # we've implemented our own.
             baudrates = self.baudrateList()
-            # We changed the default to 250000 since that's what we usually use.
-            serial_obj = serial.Serial(str(port), 250000 if 250000 in baudrates else baudrates[0], timeout=connection_timeout, writeTimeout=10000, parity=serial.PARITY_ODD)
+            # We changed the default to 250000 since that's what we usually
+            # use.
+            serial_obj = serial.Serial(
+                str(port), 250000 if 250000 in baudrates else baudrates[0],
+                timeout=connection_timeout, writeTimeout=10000,
+                parity=serial.PARITY_ODD)
         else:
-            serial_obj = serial.Serial(str(port), baudrate, timeout=connection_timeout, writeTimeout=10000, parity=serial.PARITY_ODD)
+            serial_obj = serial.Serial(
+                str(port), baudrate, timeout=connection_timeout,
+                writeTimeout=10000, parity=serial.PARITY_ODD)
         serial_obj.close()
         serial_obj.parity = serial.PARITY_NONE
         serial_obj.open()
@@ -322,7 +342,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 user="Voxel8",
                 repo="Octoprint-Automation-Scripts",
                 branch="master",
-                pip="https://github.com/Voxel8/OctoPrint-Automation-Scripts/archive/{target_version}.zip",
+                pip=("https://github.com/Voxel8/OctoPrint-Automation-Scripts/"
+                     "archive/{target_version}.zip"),
             )
         )
 
@@ -337,7 +358,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         ret.sort(reverse=True)
         return ret
 
-    ### EventHandlerPlugin API  ################################################
+    # EventHandlerPlugin API  ##############################################
 
     def on_event(self, event, payload, *args, **kwargs):
         if event == 'Disconnecting' and self.running:
@@ -363,7 +384,7 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             cmd = script_commands(full_settings)
             self._printer.commands(cmd)
 
-    ### SettingsPlugin API  ####################################################
+    # SettingsPlugin API  ##################################################
 
     def get_settings_defaults(self):
         # Settings are typically returned as OrderedDicts from the loaded
@@ -376,11 +397,13 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
         self.send_script_commands()
 
-    ### TemplatePlugin API  ####################################################
+    # TemplatePlugin API  ##################################################
 
     def get_template_configs(self):
         return [
-            dict(type="settings", template="automation_scripts_settings.jinja2", custom_bindings=False),
+            dict(type="settings",
+                 template="automation_scripts_settings.jinja2",
+                 custom_bindings=False),
         ]
 
     def get_template_vars(self):
@@ -389,14 +412,14 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             settings[script_id] = self.script_settings[script_id].keys()
         return dict(settings=settings, titles=self.script_titles)
 
-    ### AssetPlugin API  #######################################################
+    # AssetPlugin API  #####################################################
 
     def get_assets(self):
-         return {
-             "js": ["js/automation_scripts.js"],
-         }
+        return {
+            "js": ["js/automation_scripts.js"],
+        }
 
-    ### SimpleApiPlugin API ####################################################
+    # SimpleApiPlugin API ##################################################
 
     def get_api_commands(self):
         return dict(
@@ -413,7 +436,13 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             self.start(command, data)
 
     def on_api_get(self, request):
-        return flask.jsonify(script_titles=self.script_titles)
+        if self.active_script_id is not None:
+            title = self.script_titles[self.active_script_id]
+        else:
+            title = None
+        return flask.jsonify(running=self._is_running(),
+                             current_script_title=title,
+                             script_titles=self.script_titles)
 
 
 def __plugin_load__():
@@ -425,6 +454,4 @@ def __plugin_load__():
     __plugin_implementation__ = plugin
     __plugin_hooks__ = {
         "octoprint.comm.transport.serial.factory": plugin.serial_factory,
-        #"octoprint.comm.protocol.gcode.queuing": plugin.print_started_sentinel,
-        #"octoprint.plugin.softwareupdate.check_config": plugin.get_update_information,
     }
