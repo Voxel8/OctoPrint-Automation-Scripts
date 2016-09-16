@@ -303,8 +303,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
             comm_instance._changeState(comm_instance.STATE_DETECT_SERIAL)
             serial_obj = comm_instance._detectPort(True)
             if serial_obj is None:
-                comm_instance._errorValue = "Failed to autodetect serial port,"
-                " please set it manually."
+                comm_instance._errorValue = ("Failed to autodetect serial "
+                                             "port, please set it manually.")
                 comm_instance._changeState(comm_instance.STATE_ERROR)
                 comm_instance._log("Failed to autodetect serial port, "
                                    "please set it manually.")
@@ -342,8 +342,8 @@ class MecodePlugin(octoprint.plugin.EventHandlerPlugin,
                 user="Voxel8",
                 repo="Octoprint-Automation-Scripts",
                 branch="master",
-                pip="https://github.com/Voxel8/OctoPrint-Automation-Scripts/"
-                "archive/{target_version}.zip",
+                pip=("https://github.com/Voxel8/OctoPrint-Automation-Scripts/"
+                     "archive/{target_version}.zip"),
             )
         )
 
